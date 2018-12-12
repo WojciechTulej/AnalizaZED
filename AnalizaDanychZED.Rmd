@@ -1,0 +1,270 @@
+---
+title: "Zaawansowana Eksploracja Danych"
+author: "Wojciech Tulej"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    keep_md: yes
+  pdf_document: default
+---
+### Spis treœci
+
+1. [Podsumowanie analizy](#1)
+2. [Kod wyliczaj¹cy wykorzystane biblioteki](#2)
+3. [Kod zapewniaj¹cy powtarzalnoœæ wyników przy ka¿dym uruchomieniu raportu na tych samych danych](#3)
+4. [Kod pozwalaj¹cy wczytaæ dane z pliku.](#4)
+5. [Kod usuwaj¹cy z danych wiersze posiadaj¹ce wartoœæ zmiennej res_name](#5)
+6. [Kod przetwarzaj¹cy brakuj¹ce dane.](#6)
+7. [Sekcjê podsumowuj¹c¹ rozmiar zbioru i podstawowe statystyki](#7)
+8. [Kod ograniczaj¹cy liczbê klas (res_name) do 50 najpopularniejszych wartoœci](#8)
+9. [Sekcjê sprawdzaj¹c¹ korelacje miêdzy zmiennymi](#9)
+10. [Okreœlenie ile przyk³adów ma ka¿da z klas (res_name)](#10)
+11. [Wykresy rozk³adów liczby atomów](#11)
+12. [Tabelê pokazuj¹c¹ 10 klas z najwiêksz¹ niezgodnoœci¹ liczby atomów i elektronów](#12)
+13. [Sekcjê pokazuj¹c¹ rozk³ad wartoœci wszystkich kolumn zaczynaj¹cych siê od part_01 z zaznaczeniem (graficznym i liczbowym) œredniej wartoœci](#13)
+14. [Interaktywny wykres lub animacjê](#14)
+15. [Sekcjê sprawdzaj¹c¹ czy na podstawie wartoœci innych kolumn mo¿na przewidzieæ liczbê elektronów i atomów oraz z jak¹ dok³adnoœci¹ mo¿na dokonaæ takiej predykcji; trafnoœæ regresji powinna zostaæ oszacowana na podstawie miar R^2 i RMSE;](#15)
+16. [Sekcjê próbuj¹c¹ stworzyæ klasyfikator przewiduj¹cy wartoœæ atrybutu res_name (w tej sekcji nale¿y wykorzystaæ wiedzê z pozosta³ych punktów oraz wykonaæ dodatkowe czynnoœci, które mog¹ poprawiæ trafnoœæ klasyfikacji); trafnoœæ klasyfikacji powinna zostaæ oszacowana na danych inne ni¿ ucz¹ce za pomoc¹ mechanizmu (stratyfikowanej!) oceny krzy¿owej lub (stratyfikowanego!) zbioru testowego.](#16)
+
+
+
+
+#<a name="1"/>
+###Podsumowanie analizy
+
+
+
+
+
+#<a name="2"/>
+###Kod wyliczaj¹cy wykorzystane biblioteki
+
+```{r libraryLists, warning=FALSE, message=FALSE}
+library(data.table)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(corrplot)
+library(plotly)
+library(caret)
+library(knitr)
+
+```
+
+
+#<a name="3"/>
+###Kod zapewniaj¹cy powtarzalnoœæ wyników przy ka¿dym uruchomieniu raportu na tych samych danych
+
+
+#<a name="4"/>
+###Kod pozwalaj¹cy wczytaæ dane z pliku
+```{r readData, results='hide'}
+
+all <- fread("all_summary.csv", header="auto", sep=";")
+
+
+```
+
+
+
+#<a name="5"/>
+###Kod usuwaj¹cy z danych wiersze posiadaj¹ce wartoœæ zmiennej res_name
+```{r all} 
+
+all_summary <- all_summary <- all%>% filter(!(res_name %in% c('UNK', 'UNX', 'UNL', 'DUM', 'N', 'BLOB', 'ALA', 'ARG' ,'ASN', 'ASP', 'CYS', 'GLN', 'GLU', 'GLY', 'HIS', 'ILE', 'LEU', 'LYS', 'MET', 'MSE','PHE', 'PRO', 'SEC', 'SER', 'THR', 'TRP', 'TYR', 'VAL', 'DA', 'DG', 'DT', 'DC', 'DU', 'A', 'G', 'T', 'C', 'U', 'HOH', 'H20', 'WAT', "NAN", "", "NA", NA)))
+
+```
+
+
+#<a name="6"/>
+###Kod przetwarzaj¹cy brakuj¹ce dane
+
+```{r removeRes_name, results='hide'}
+all_summary %>% drop_na()
+
+```
+
+
+#<a name="7"/>
+###Sekcjê podsumowuj¹c¹ rozmiar zbioru i podstawowe statystyki
+
+
+
+
+#<a name="8"/>
+###Kod ograniczaj¹cy liczbê klas (res_name) do 50 najpopularniejszych wartoœci
+```{r res_name, echo=FALSE}
+najlepsze <- all[ , .N , by= res_name]
+najlepsze <- najlepsze[!is.na(res_name)]
+najlepsze <- najlepsze[order(-N)]
+najlepsze[1 : 50]
+
+```
+
+#<a name="9"/>
+###Sekcjê sprawdzaj¹c¹ korelacje miêdzy zmiennymi; sekcja ta powinna zawieraæ jak¹œ formê graficznej prezentacji korelacji
+```{r cor_data_set, echo=FALSE} 
+
+
+
+all_data <- all_summary %>% select(local_res_atom_non_h_count, local_res_atom_non_h_electron_sum, part_01_electrons:part_01_density_sqrt_E3, solvent_opening_radius:solvent_radius)
+
+cordata <- cor(all_data, use = "pairwise.complete.obs")
+
+corrplot(cordata, method = "color", tl.cex = 0.1, tl.col = "black")
+
+```
+
+
+#<a name="10"/>
+###Okreœlenie ile przyk³adów ma ka¿da z klas (res_name)
+```{r res_name_cunt, echo=FALSE}
+
+res_name_count <- najlepsze %>% group_by(res_name) %>% summarise(count = n()) %>% arrange(desc(count))
+
+summary_res_name <- summarise(group_by(res_name_count, count), class= paste(res_name,collapse = ", "))
+
+```
+
+
+#<a name="11"/>
+###Wykresy rozk³adów liczby atomów (local_res_atom_non_h_count) i elektronów (local_res_atom_non_h_electron_sum) 
+#Rozk³ad atomów 
+```{r atomHist, echo=FALSE} 
+
+ggplot(all, aes(x=local_res_atom_non_h_count)) + geom_histogram(binwidth = 2, fill=I("white"), col=I("black")) + labs(title="Histogram local_res_atom_non_h_count")
+
+```
+
+#Rozk³ad elektronów
+```{r elektronHist, echo=FALSE}
+
+wykres <- ggplot(all_summary, aes(x=local_res_atom_non_h_electron_sum)) + geom_histogram(binwidth = 25, fill=I("white"), col=I("black")) + labs(title="Histogram local_res_atom_non_h_electron_sum")
+wykres
+```
+
+#<a name="12"/>
+###Tabelê pokazuj¹c¹ 10 klas z najwiêksz¹ niezgodnoœci¹ liczby atomów (local_res_atom_non_h_count vs dict_atom_non_h_count) i tabelê pokazuj¹c¹ 10 klas z najwiêksz¹ niezgodnoœci¹ liczby elektronów (local_res_atom_non_h_electron_sum vs dict_atom_non_h_electron_sum;)
+#Niezgodnoœæ atomów
+```{r niezgodnosc_atomow, echo=FALSE}
+
+niezgodnosc_atomow <- all_summary %>% mutate(diff_atom = abs(local_res_atom_non_h_count - dict_atom_non_h_count)) %>% group_by(res_name) %>% summarize(max_diff_atom = max(diff_atom))
+
+niezgodnosc_atomow %>% arrange(desc(max_diff_atom)) %>% select(res_name, max_diff_atom) %>% head(10)
+
+```
+
+
+#Niezgodnoœæ elektronów
+```{r niezgodnosc_elektronow, echo=FALSE}
+
+niezgodnosc_elektronow <- all_summary %>% mutate(elektron = abs(local_res_atom_non_h_electron_sum - dict_atom_non_h_electron_sum)) %>% group_by(res_name) %>% summarize(max_electron = max(elektron))
+
+niezgodnosc_elektronow %>% arrange(desc(max_electron)) %>% select(res_name, max_electron) %>% head(10)
+```
+
+#<a name="13"/>
+###Sekcjê pokazuj¹c¹ rozk³ad wartoœci wszystkich kolumn zaczynaj¹cych siê od part_01 z zaznaczeniem (graficznym i liczbowym) œredniej wartoœci
+```{r his_part_01, echo=FALSE }
+
+part_01 <- select(all_summary, matches("part_01.*"))
+par(mfrow=c(1,3), las=1)
+
+for(i in 1:ncol(part_01)) {
+   mx <- mean(part_01[[i]], na.rm = TRUE)
+   hist(part_01[[i]], main = paste(colnames(part_01)[i], "\n(avg:", mx, ")", sep=""))
+   abline(v = mx, col = "blue", lwd = 2)
+ }
+
+```
+
+#<a name="14"/>
+###Interaktywny wykres
+```{r wykres , echo=FALSE}
+
+ggplotly(wykres)
+
+```
+
+
+#<a name="15"/>
+###Sekcjê sprawdzaj¹c¹ czy na podstawie wartoœci innych kolumn mo¿na przewidzieæ liczbê elektronów i atomów oraz z jak¹ dok³adnoœci¹ mo¿na dokonaæ takiej predykcji; trafnoœæ regresji powinna zostaæ oszacowana na podstawie miar R^2 i RMSE
+
+#Dok³adnoœc atomów
+```{r predict part_01_chart}
+all_data_ML <- all
+all_data_ML[is.na(all_data_ML)] <- 0
+all_data_ML <- dplyr::select_if(all_data_ML, is.numeric)
+
+atom_model <- lm(local_res_atom_non_h_count ~ ., all_data_ML)
+atom_summary <- summary(atom_model)
+
+elektron_model <- lm(local_res_atom_non_h_electron_sum ~ ., all_data_ML)
+elektron_summary <- summary(elektron_model)
+
+
+
+```
+
+Miary dla liczby atomów:<br />
+R^2: `r atom_summary$r.squared`<br />
+RMSEL `r atom_summary$sigma`<br />
+
+Miary dla liczby elektronów:<br />
+R^2: `r elektron_summary$r.squared`<br />
+RMSEL `r elektron_summary$sigma`<br />
+
+
+#<a name="16"/>
+###Sekcjê próbuj¹c¹ stworzyæ klasyfikator przewiduj¹cy wartoœæ atrybutu res_name (w tej sekcji nale¿y wykorzystaæ wiedzê z pozosta³ych punktów oraz wykonaæ dodatkowe czynnoœci, które mog¹ poprawiæ trafnoœæ klasyfikacji); trafnoœæ klasyfikacji powinna zostaæ oszacowana na danych inne ni¿ ucz¹ce za pomoc¹ mechanizmu (stratyfikowanej!) oceny krzy¿owej lub (stratyfikowanego!) zbioru testowego
+
+
+```{r classify}
+all <- subset(all, select=-c(blob_coverage,res_coverage,title,pdb_code,res_id,chain_id,skeleton_data,fo_col,fc_col,weight_col))
+all <- all[complete.cases(all), ]
+```
+
+```{r}
+all$res_name <- as.character(all$res_name)
+all$res_name <- as.factor(all$res_name)
+
+```
+
+```{r}
+inTraining <- createDataPartition(y = all$res_name, p = .8, list = FALSE)
+training <- all[ inTraining,]
+testing  <- all[-inTraining,]
+rfGrid <- expand.grid(mtry = 10:30)
+```
+
+```{r }
+gridCtrl <- trainControl(
+    method = "repeatedcv",
+    number = 2,
+    repeats = 3)
+```
+
+```{r eval=FALSE}
+
+fitTune <- train(res_name ~ .,
+             data = training,
+             method = "rf",
+             trControl = gridCtrl,
+             tuneGrid = rfGrid,
+             ntree = 30)
+
+fitTune
+```
+
+macierz pomy³ek i miary dla ka¿dej klasy
+
+{r evaluateClassification }
+   
+predClasses <- predict(fitTune,
+                         newdata = testing)
+cm <- confusionMatrix(data = predClasses, 
+                testing$res_name)
+
+cm$overall
+cm$byClass %>% kable()
+
